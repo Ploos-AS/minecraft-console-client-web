@@ -5,6 +5,8 @@ services:
     environment:
       MCC_WS_URL: ${MCC_WS_URL:-ws://mcc:8043/}
       MCC_WS_PASSWORD: ${MCC_WS_PASSWORD:?set MCC_WS_PASSWORD}
+      MCC_WEB_USERNAME: ${MCC_WEB_USERNAME:-admin}
+      MCC_WEB_PASSWORD: ${MCC_WEB_PASSWORD:?set MCC_WEB_PASSWORD}
     ports:
       - "127.0.0.1:8080:8080"
     restart: unless-stopped

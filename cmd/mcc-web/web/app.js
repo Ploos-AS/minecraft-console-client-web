@@ -9,6 +9,7 @@ const form = document.getElementById('command-form');
 const input = document.getElementById('command');
 const send = document.getElementById('send');
 const clear = document.getElementById('clear');
+const logout = document.getElementById('logout');
 let sequence = 0;
 let socket;
 
@@ -115,6 +116,14 @@ form.addEventListener('submit', (event) => {
 });
 
 clear.addEventListener('click', () => { log.textContent = ''; });
+logout.addEventListener('click', async () => {
+  logout.disabled = true;
+  try {
+    await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+  } finally {
+    location.assign('/login');
+  }
+});
 input.disabled = true;
 send.disabled = true;
 connect();

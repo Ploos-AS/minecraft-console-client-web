@@ -134,6 +134,7 @@
     const status = classifyBridge(bridgeState.textContent);
     bridgeState.dataset.state = status;
     bridgeState.setAttribute('aria-label', `WebAdmin bridge: ${status}`);
+    bridgeState.textContent = `WebAdmin bridge: ${status}`;
   }
 
   new MutationObserver(annotateBridge).observe(bridgeState, { childList: true, characterData: true, subtree: true });

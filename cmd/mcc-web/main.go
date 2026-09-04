@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Ploos-AS/minecraft-console-client-web/internal/mcc"
 	"github.com/gorilla/websocket"
 )
 
@@ -31,12 +32,6 @@ type app struct {
 	cfg      config
 	log      *slog.Logger
 	upgrader websocket.Upgrader
-}
-
-type wsCommand struct {
-	Command    string `json:"command"`
-	RequestID  string `json:"requestId"`
-	Parameters []any  `json:"parameters"`
 }
 
 func main() {
@@ -109,6 +104,7 @@ func (a *app) status(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"service":      "minecraft-console-client-web",
 		"mccWebSocket": a.cfg.MCCURL,
+		"mode":         "per-browser reconnecting session",
 	})
 }
 
@@ -120,39 +116,13 @@ func (a *app) bridge(w http.ResponseWriter, r *http.Request) {
 	}
 	defer browser.Close()
 
-	upstream, _, err := websocket.DefaultDialer.DialContext(r.Context(), a.cfg.MCCURL, nil)
-	if err != nil {
-		_ = browser.WriteJSON(map[string]any{"type": "error", "message": "unable to connect to MCC WebSocket"})
-		a.log.Warn("MCC websocket connection failed", "error", err)
-		return
+	session := &mcc.Session{
+		URL:      a.cfg.MCCURL,
+		Password: a.cfg.MCCPassword,
+		Log:      a.log,
 	}
-	defer upstream.Close()
-
-	auth := wsCommand{Command: "Authenticate", RequestID: "mcc-web-auth", Parameters: []any{a.cfg.MCCPassword}}
-	if err := upstream.WriteJSON(auth); err != nil {
-		_ = browser.WriteJSON(map[string]any{"type": "error", "message": "unable to authenticate to MCC"})
-		return
-	}
-
-	errCh := make(chan error, 2)
-	go copyWebSocket(upstream, browser, errCh)
-	go copyWebSocket(browser, upstream, errCh)
-	if err := <-errCh; err != nil && !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-		a.log.Debug("websocket bridge closed", "error", err)
-	}
-}
-
-func copyWebSocket(src, dst *websocket.Conn, errCh chan<- error) {
-	for {
-		messageType, payload, err := src.ReadMessage()
-		if err != nil {
-			errCh <- err
-			return
-		}
-		if err := dst.WriteMessage(messageType, payload); err != nil {
-			errCh <- err
-			return
-		}
+	if err := session.Run(r.Context(), browser); err != nil && !errors.Is(err, context.Canceled) && !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+		a.log.Debug("MCC bridge session closed", "error", err)
 	}
 }
 

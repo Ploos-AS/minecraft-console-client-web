@@ -37,14 +37,21 @@ jobs:
         run: |
           docker run -d --name mcc-web-test \
             -e MCC_WS_PASSWORD=test-only \
+            -e MCC_WEB_PASSWORD=web-test-only \
             -p 127.0.0.1:18080:8080 \
             minecraft-console-client-web:test
           trap 'docker rm -f mcc-web-test >/dev/null 2>&1 || true' EXIT
           for i in $(seq 1 20); do
             if curl -fsS http://127.0.0.1:18080/api/healthz >/dev/null; then
-              exit 0
+              break
             fi
             sleep 1
           done
-          docker logs mcc-web-test
-          exit 1
+          curl -fsS http://127.0.0.1:18080/api/healthz >/dev/null
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/status)" = "401"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/)" = "303"
+          curl -fsS -c /tmp/mcc-web.cookies \
+            -d 'username=admin&password=web-test-only' \
+            -o /dev/null \
+            http://127.0.0.1:18080/api/login
+          curl -fsS -b /tmp/mcc-web.cookies http://127.0.0.1:18080/api/status >/dev/null

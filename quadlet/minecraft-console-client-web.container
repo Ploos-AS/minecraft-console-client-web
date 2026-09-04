@@ -1,0 +1,20 @@
+[Unit]
+Description=Minecraft Console Client WebAdmin
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/minecraft-console-client-web:dev
+ContainerName=minecraft-console-client-web
+Environment=MCC_WS_URL=ws://mcc:8043/
+EnvironmentFile=%h/.config/minecraft-console-client-web/env
+PublishPort=127.0.0.1:8080:8080
+DropCapability=all
+NoNewPrivileges=true
+
+[Service]
+Restart=on-failure
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

@@ -51,6 +51,68 @@ func TestManagerConnectsWithoutBrowserSubscribers(t *testing.T) {
 	}
 }
 
+func TestManagerBridgesRawTextToMCC(t *testing.T) {
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	received := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		if !authenticateFixture(conn) {
+			return
+		}
+		mt, payload, err := conn.ReadMessage()
+		if err == nil && mt == websocket.TextMessage {
+			received <- string(payload)
+		}
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewManager("ws"+strings.TrimPrefix(server.URL, "http"), "secret", nil)
+	done := make(chan error, 1)
+	go func() { done <- manager.Run(ctx) }()
+	waitForState(t, manager, StateConnected, 2*time.Second)
+
+	replies := make(chan browserMessage, 1)
+	request := BrowserRequest{Type: "text", ID: "ui-text-1", Text: "hello from web"}
+	if err := manager.send(ctx, browserRequest{request: request, reply: replies}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-received:
+		if got != request.Text {
+			t.Fatalf("upstream text = %q, want %q", got, request.Text)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for raw MCC text")
+	}
+
+	select {
+	case reply := <-replies:
+		var got map[string]any
+		if err := json.Unmarshal(reply.payload, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got["type"] != "text-response" || got["id"] != request.ID || got["success"] != true {
+			t.Fatalf("unexpected text response: %#v", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for text response")
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("manager did not stop after cancellation")
+	}
+}
+
 func TestManagerFansOutOneUpstreamEventToMultipleSubscribers(t *testing.T) {
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	sendEvent := make(chan struct{})

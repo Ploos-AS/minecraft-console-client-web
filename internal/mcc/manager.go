@@ -13,8 +13,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type commandRequest struct {
-	command BrowserCommand
+type browserRequest struct {
+	request BrowserRequest
 	reply   chan browserMessage
 }
 
@@ -31,7 +31,7 @@ type Manager struct {
 	mu          sync.RWMutex
 	status      Status
 	subscribers map[chan browserMessage]struct{}
-	commands    chan commandRequest
+	requests    chan browserRequest
 	sequence    atomic.Uint64
 }
 
@@ -39,7 +39,7 @@ func NewManager(url, password string, log *slog.Logger) *Manager {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Manager{URL: url, Password: password, Log: log, Dialer: websocket.DefaultDialer, status: Status{State: StateDisconnected}, subscribers: make(map[chan browserMessage]struct{}), commands: make(chan commandRequest, 64)}
+	return &Manager{URL: url, Password: password, Log: log, Dialer: websocket.DefaultDialer, status: Status{State: StateDisconnected}, subscribers: make(map[chan browserMessage]struct{}), requests: make(chan browserRequest, 64)}
 }
 
 func (m *Manager) Status() Status {
@@ -81,9 +81,9 @@ func (m *Manager) subscribe() (chan browserMessage, func()) {
 	}
 }
 
-func (m *Manager) send(ctx context.Context, request commandRequest) error {
+func (m *Manager) send(ctx context.Context, request browserRequest) error {
 	select {
-	case m.commands <- request:
+	case m.requests <- request:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -119,16 +119,20 @@ func (m *Manager) ServeBrowser(ctx context.Context, browser *websocket.Conn) err
 				nonblockingReply(events, protocolErrorMessage("only text messages are supported"))
 				continue
 			}
-			command, err := parseBrowserCommand(payload)
+			request, err := parseBrowserRequest(payload)
 			if err != nil {
 				nonblockingReply(events, protocolErrorMessage(err.Error()))
 				continue
 			}
 			if m.Status().State != StateConnected {
-				nonblockingReply(events, commandResponseMessage(command.ID, CommandResponse{Success: false, Message: "MCC is not connected"}))
+				if request.Type == "text" {
+					nonblockingReply(events, textResponseMessage(request.ID, false, "MCC is not connected"))
+				} else {
+					nonblockingReply(events, commandResponseMessage(request.ID, CommandResponse{Success: false, Message: "MCC is not connected"}))
+				}
 				continue
 			}
-			if err := m.send(ctx, commandRequest{command: command, reply: events}); err != nil {
+			if err := m.send(ctx, browserRequest{request: request, reply: events}); err != nil {
 				return
 			}
 		}
@@ -226,15 +230,24 @@ func (m *Manager) runConnected(ctx context.Context, conn *websocket.Conn) error 
 		case err := <-errCh:
 			failPending("MCC connection lost")
 			return err
-		case request := <-m.commands:
+		case queued := <-m.requests:
+			if queued.request.Type == "text" {
+				if err := conn.WriteMessage(websocket.TextMessage, []byte(queued.request.Text)); err != nil {
+					nonblockingReply(queued.reply, textResponseMessage(queued.request.ID, false, "failed to send text to MCC"))
+					failPending("MCC connection lost")
+					return fmt.Errorf("write MCC text: %w", err)
+				}
+				nonblockingReply(queued.reply, textResponseMessage(queued.request.ID, true, ""))
+				continue
+			}
 			upstreamID := fmt.Sprintf("mcc-web-%d", m.sequence.Add(1))
-			command := Command{Command: request.command.Command, RequestID: upstreamID, Parameters: request.command.Parameters}
+			command := Command{Command: queued.request.Command, RequestID: upstreamID, Parameters: queued.request.Parameters}
 			if err := conn.WriteJSON(command); err != nil {
-				nonblockingReply(request.reply, commandResponseMessage(request.command.ID, CommandResponse{Success: false, Message: "failed to send command to MCC"}))
+				nonblockingReply(queued.reply, commandResponseMessage(queued.request.ID, CommandResponse{Success: false, Message: "failed to send command to MCC"}))
 				failPending("MCC connection lost")
 				return fmt.Errorf("write MCC command: %w", err)
 			}
-			pending[upstreamID] = pendingCommand{browserID: request.command.ID, reply: request.reply}
+			pending[upstreamID] = pendingCommand{browserID: queued.request.ID, reply: queued.reply}
 		case payload := <-incoming:
 			message, response, err := normalizedEvent(payload)
 			if err != nil {

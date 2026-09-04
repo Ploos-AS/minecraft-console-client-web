@@ -23,26 +23,50 @@
       </div>
     </header>
 
-    <section class="stats" aria-label="Connection status">
+    <section class="stats" aria-label="MCC status">
       <article><span class="label">MCC</span><strong id="mcc-state">Disconnected</strong></article>
-      <article><span class="label">Connected since</span><strong id="connected-at">—</strong></article>
+      <article><span class="label">Health / food</span><strong><span id="health">—</span> / <span id="food">—</span></strong></article>
+      <article><span class="label">Level / XP</span><strong><span id="level">—</span> / <span id="xp">—</span></strong></article>
+      <article><span class="label">Server TPS</span><strong id="tps">—</strong></article>
+      <article><span class="label">World time</span><strong id="world-time">—</strong></article>
       <article><span class="label">Reconnect attempts</span><strong id="attempts">0</strong></article>
     </section>
 
-    <section class="panel console-panel">
-      <div class="panel-heading">
-        <div><h2>Console</h2><p>Live MCC events and command responses</p></div>
-        <button id="clear" class="secondary" type="button">Clear</button>
-      </div>
-      <div id="log" class="log" aria-live="polite" aria-label="MCC event log"></div>
-      <form id="command-form">
-        <span class="prompt">›</span>
-        <input id="command" autocomplete="off" placeholder="Chat text or /MCC command" aria-label="Command">
-        <button id="send" type="submit">Send</button>
-      </form>
+    <section class="workspace">
+      <section class="panel chat-panel">
+        <div class="panel-heading">
+          <div><h2>Chat</h2><p>Public, private and raw chat from MCC</p></div>
+          <button id="clear-chat" class="secondary" type="button">Clear</button>
+        </div>
+        <div id="chat" class="chat" aria-live="polite" aria-label="Minecraft chat"></div>
+        <form id="chat-form" class="composer">
+          <span class="prompt">›</span>
+          <input id="chat-input" autocomplete="off" placeholder="Send chat message" aria-label="Chat message">
+          <button id="chat-send" type="submit">Send</button>
+        </form>
+      </section>
+
+      <aside class="panel side-panel">
+        <div class="panel-heading"><div><h2>Session</h2><p>Live MCC state</p></div></div>
+        <dl class="session-details">
+          <div><dt>Connected since</dt><dd id="connected-at">—</dd></div>
+          <div><dt>Observed players</dt><dd id="players">0</dd></div>
+          <div><dt>Last disconnect</dt><dd id="last-disconnect">—</dd></div>
+        </dl>
+        <form id="command-form" class="command-box">
+          <label for="command">MCC command</label>
+          <div><input id="command" autocomplete="off" placeholder="/status" aria-label="MCC command"><button id="send" type="submit">Run</button></div>
+        </form>
+      </aside>
     </section>
 
-    <footer><span id="bridge-state">Connecting to WebAdmin…</span><span>Commands are correlated through the MCC WebSocket bridge</span></footer>
+    <details class="panel activity-panel">
+      <summary>Raw activity <span>All normalized MCC events and command responses</span></summary>
+      <div class="activity-toolbar"><button id="clear" class="secondary" type="button">Clear</button></div>
+      <div id="log" class="log" aria-live="polite" aria-label="MCC event log"></div>
+    </details>
+
+    <footer><span id="bridge-state">Connecting to WebAdmin…</span><span>Structured from MCC WebSocketBot events</span></footer>
   </main>
   <script src="/app.js" defer></script>
 </body>

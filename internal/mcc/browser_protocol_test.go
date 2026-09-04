@@ -15,6 +15,22 @@ func TestParseBrowserCommand(t *testing.T) {
 	}
 }
 
+func TestParseBrowserText(t *testing.T) {
+	request, err := parseBrowserRequest([]byte(`{"type":"text","id":"ui-8","text":"hello world"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Type != "text" || request.ID != "ui-8" || request.Text != "hello world" {
+		t.Fatalf("unexpected text request: %#v", request)
+	}
+}
+
+func TestParseBrowserTextRejectsEmptyText(t *testing.T) {
+	if _, err := parseBrowserRequest([]byte(`{"type":"text","id":"ui-9","text":""}`)); err == nil {
+		t.Fatal("empty raw text request was accepted")
+	}
+}
+
 func TestNormalizedEventDecodesNestedData(t *testing.T) {
 	message, response, err := normalizedEvent([]byte(`{"event":"OnChatRaw","data":"{\"text\":\"hello\"}"}`))
 	if err != nil {

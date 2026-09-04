@@ -7,16 +7,30 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// BrowserCommand is the stable command envelope accepted from the WebAdmin UI.
-// ID belongs to the browser client and is preserved in the corresponding response.
-type BrowserCommand struct {
+// BrowserRequest is the stable browser-to-WebAdmin envelope. Command requests
+// map to WebSocketBot JSON procedures. Text requests map to WebSocketBot's
+// plain-text path, which sends chat or an MCC internal command when prefixed
+// with '/'.
+type BrowserRequest struct {
 	Type       string `json:"type"`
 	ID         string `json:"id"`
-	Command    string `json:"command"`
+	Command    string `json:"command,omitempty"`
 	Parameters []any  `json:"parameters,omitempty"`
+	Text       string `json:"text,omitempty"`
 }
 
+// BrowserCommand remains as a compatibility alias for code that builds typed
+// WebSocketBot procedure requests.
+type BrowserCommand = BrowserRequest
+
 type browserCommandResponse struct {
+	Type    string `json:"type"`
+	ID      string `json:"id"`
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
+type browserTextResponse struct {
 	Type    string `json:"type"`
 	ID      string `json:"id"`
 	Success bool   `json:"success"`
@@ -29,24 +43,41 @@ type browserEvent struct {
 	Data  any    `json:"data"`
 }
 
+func parseBrowserRequest(payload []byte) (BrowserRequest, error) {
+	var request BrowserRequest
+	if err := json.Unmarshal(payload, &request); err != nil {
+		return BrowserRequest{}, fmt.Errorf("decode browser request: %w", err)
+	}
+	if request.ID == "" {
+		return BrowserRequest{}, fmt.Errorf("browser request missing id")
+	}
+	switch request.Type {
+	case "command":
+		if request.Command == "" {
+			return BrowserRequest{}, fmt.Errorf("browser command missing command")
+		}
+		if request.Parameters == nil {
+			request.Parameters = []any{}
+		}
+	case "text":
+		if request.Text == "" {
+			return BrowserRequest{}, fmt.Errorf("browser text request missing text")
+		}
+	default:
+		return BrowserRequest{}, fmt.Errorf("unsupported browser message type %q", request.Type)
+	}
+	return request, nil
+}
+
 func parseBrowserCommand(payload []byte) (BrowserCommand, error) {
-	var command BrowserCommand
-	if err := json.Unmarshal(payload, &command); err != nil {
-		return BrowserCommand{}, fmt.Errorf("decode browser command: %w", err)
+	request, err := parseBrowserRequest(payload)
+	if err != nil {
+		return BrowserCommand{}, err
 	}
-	if command.Type != "command" {
-		return BrowserCommand{}, fmt.Errorf("unsupported browser message type %q", command.Type)
+	if request.Type != "command" {
+		return BrowserCommand{}, fmt.Errorf("unsupported browser message type %q", request.Type)
 	}
-	if command.ID == "" {
-		return BrowserCommand{}, fmt.Errorf("browser command missing id")
-	}
-	if command.Command == "" {
-		return BrowserCommand{}, fmt.Errorf("browser command missing command")
-	}
-	if command.Parameters == nil {
-		command.Parameters = []any{}
-	}
-	return command, nil
+	return request, nil
 }
 
 func normalizedEvent(payload []byte) (browserMessage, *CommandResponse, error) {
@@ -72,6 +103,10 @@ func normalizedEvent(payload []byte) (browserMessage, *CommandResponse, error) {
 
 func commandResponseMessage(id string, response CommandResponse) browserMessage {
 	return jsonBrowserMessage(browserCommandResponse{Type: "command-response", ID: id, Success: response.Success, Message: response.Message})
+}
+
+func textResponseMessage(id string, success bool, message string) browserMessage {
+	return jsonBrowserMessage(browserTextResponse{Type: "text-response", ID: id, Success: success, Message: message})
 }
 
 func protocolErrorMessage(message string) browserMessage {

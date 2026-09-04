@@ -1,0 +1,14 @@
+services:
+  mcc-web:
+    build: .
+    image: minecraft-console-client-web:dev
+    environment:
+      MCC_WS_URL: ${MCC_WS_URL:-ws://mcc:8043/}
+      MCC_WS_PASSWORD: ${MCC_WS_PASSWORD:?set MCC_WS_PASSWORD}
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

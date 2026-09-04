@@ -17,8 +17,7 @@
     return String(value || '')
       .replace(/§[0-9A-FK-OR]/gi, '')
       .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
+      .trim();
   }
 
   function pruneStructured(now = Date.now()) {
@@ -87,7 +86,14 @@
   function activityKey(row) {
     if (!(row instanceof HTMLElement) || !row.classList.contains('error')) return '';
     const parts = [...row.querySelectorAll('span, small')].map((node) => normalize(node.textContent));
-    return parts.join('|');
+    const summary = parts.join('|');
+    if (!summary) return '';
+    const connectionFailure = parts.some((part) =>
+      part === 'MCC connection error' ||
+      part === 'WebAdmin WebSocket error' ||
+      part.startsWith('MCC connection error|')
+    );
+    return connectionFailure ? summary : '';
   }
 
   function handleActivityRow(row) {
@@ -117,7 +123,7 @@
   logObserver.observe(log, { childList: true });
 
   function classifyBridge(text) {
-    const value = normalize(text);
+    const value = normalize(text).toLowerCase();
     if (value.includes('connected') && !value.includes('disconnected')) return 'connected';
     if (value.includes('retry')) return 'retrying';
     if (value.includes('connecting')) return 'connecting';

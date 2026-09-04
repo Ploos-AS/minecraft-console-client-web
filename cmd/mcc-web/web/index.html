@@ -3,26 +3,43 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Minecraft Console Client Web</title>
+  <title>MCC WebAdmin</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <main>
     <header>
       <div>
-        <h1>MCC Web</h1>
-        <p>WebAdmin for Minecraft Console Client</p>
+        <p class="eyebrow">Ploos AS</p>
+        <h1>Minecraft Console Client</h1>
+        <p class="subtitle">WebAdmin</p>
       </div>
-      <span id="state" class="badge offline">offline</span>
+      <div class="connection">
+        <span id="state-dot" class="dot"></span>
+        <span id="state">disconnected</span>
+      </div>
     </header>
 
-    <section class="panel">
-      <div id="log" class="log" aria-live="polite"></div>
+    <section class="stats" aria-label="Connection status">
+      <article><span class="label">MCC</span><strong id="mcc-state">Disconnected</strong></article>
+      <article><span class="label">Connected since</span><strong id="connected-at">—</strong></article>
+      <article><span class="label">Reconnect attempts</span><strong id="attempts">0</strong></article>
+    </section>
+
+    <section class="panel console-panel">
+      <div class="panel-heading">
+        <div><h2>Console</h2><p>Live MCC events and command responses</p></div>
+        <button id="clear" class="secondary" type="button">Clear</button>
+      </div>
+      <div id="log" class="log" aria-live="polite" aria-label="MCC event log"></div>
       <form id="command-form">
+        <span class="prompt">›</span>
         <input id="command" autocomplete="off" placeholder="Chat text or /MCC command" aria-label="Command">
-        <button type="submit">Send</button>
+        <button id="send" type="submit">Send</button>
       </form>
     </section>
+
+    <footer><span id="bridge-state">Connecting to WebAdmin…</span><span>Commands are correlated through the MCC WebSocket bridge</span></footer>
   </main>
   <script src="/app.js" defer></script>
 </body>

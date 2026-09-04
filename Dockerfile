@@ -13,6 +13,16 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags='-s -w' -o /out/mcc-web ./cmd/mcc-web
 
 FROM alpine:3.22
+ARG VERSION=dev
+ARG REVISION=unknown
+ARG CREATED=unknown
+LABEL org.opencontainers.image.title="Minecraft Console Client Web" \
+      org.opencontainers.image.description="Self-hosted WebAdmin for Minecraft Console Client" \
+      org.opencontainers.image.url="https://github.com/Ploos-AS/minecraft-console-client-web" \
+      org.opencontainers.image.source="https://github.com/Ploos-AS/minecraft-console-client-web" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.created="${CREATED}"
 RUN apk add --no-cache ca-certificates \
  && addgroup -g 1000 -S mccweb \
  && adduser -u 1000 -S -D -H -G mccweb mccweb

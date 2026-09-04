@@ -4,7 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Container]
-Image=localhost/minecraft-console-client-web:dev
+Image=ghcr.io/ploos-as/minecraft-console-client-web:0.1.0
 ContainerName=minecraft-console-client-web
 Environment=MCC_WS_URL=ws://mcc:8043/
 EnvironmentFile=%h/.config/minecraft-console-client-web/env

@@ -1,7 +1,6 @@
 services:
   mcc-web:
-    build: .
-    image: minecraft-console-client-web:dev
+    image: ghcr.io/ploos-as/minecraft-console-client-web:0.1.0
     environment:
       MCC_WS_URL: ${MCC_WS_URL:-ws://mcc:8043/}
       MCC_WS_PASSWORD: ${MCC_WS_PASSWORD:?set MCC_WS_PASSWORD}

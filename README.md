@@ -26,6 +26,8 @@ The current implementation provides:
 - non-root UID/GID 1000
 - Docker Compose and rootless Podman examples
 - CI for formatting, vet, tests, Go builds, container build and authenticated smoke testing
+- multi-architecture OCI publication for linux/amd64 and linux/arm64
+- OCI metadata plus BuildKit SBOM and provenance attestations
 
 `WebSocketBot.cs` is an external MCC script and must be loaded in the MCC instance.
 
@@ -74,6 +76,18 @@ After every successful MCC WebSocket connection, and again after `OnGameJoined`,
 
 Responses are correlated using the normalized browser command protocol and used to hydrate the dashboard. Live events then update relevant fields until the next reconnect. Inventory is presented read-only; M0.9 does not add inventory mutation controls.
 
+## Container image
+
+Stable releases are published to GHCR as:
+
+```text
+ghcr.io/ploos-as/minecraft-console-client-web:<version>
+```
+
+The first stable release target is `0.1.0`. Stable tags also publish the matching minor and major aliases plus `latest`; `main` publishes `edge`. Release-candidate branches under `release/**` publish a branch-derived staging tag and do not update `latest`.
+
+Release images are built for `linux/amd64` and `linux/arm64` with OCI source/version/revision metadata, SBOM and provenance attestations.
+
 ## Run locally
 
 ```bash
@@ -92,10 +106,14 @@ The UI listens on `http://127.0.0.1:8080` when using the Compose example, or `:8
 ```bash
 export MCC_WS_PASSWORD='replace-mcc-password'
 export MCC_WEB_PASSWORD='replace-webadmin-password'
-docker compose up --build -d
+docker compose up -d
 ```
 
-`compose.yaml` intentionally contains only the web application. MCC remains a separate service/container and should share a private network with the web application.
+`compose.yaml` is pinned to `ghcr.io/ploos-as/minecraft-console-client-web:0.1.0`. It intentionally contains only the web application. MCC remains a separate service/container and should share a private network with the web application.
+
+## Podman Quadlet
+
+The supplied Quadlet is also pinned to the exact `0.1.0` image. Put the container unit under `~/.config/containers/systemd/` and provide secrets/configuration in `~/.config/minecraft-console-client-web/env` before starting it with systemd --user.
 
 ## Configuration
 
@@ -124,6 +142,10 @@ The current authentication model is single-user, not RBAC.
 The application keeps MCC credentials server-side, checks browser WebSocket origins against the request host, uses authenticated server-side sessions, sets defensive browser headers and runs as UID/GID 1000 with Linux capabilities dropped in the supplied Compose example.
 
 Use strong, unrelated values for `MCC_WEB_PASSWORD` and `MCC_WS_PASSWORD`. Keep the MCC WebSocket service private even when WebAdmin authentication is enabled.
+
+## Release process
+
+Release preparation follows `work/* -> main -> release/vX.Y.Z -> tag vX.Y.Z`. The normal CI gate must be green before merge. The release branch then exercises the same multiarch publishing path as the final tag without changing `latest`. Only after the release-candidate image is qualified is the immutable version tag created. See `docs/RELEASE.md` for the qualification checklist.
 
 ## Development
 

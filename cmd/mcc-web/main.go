@@ -107,7 +107,7 @@ func (a *app) healthz(w http.ResponseWriter, _ *http.Request) {
 func (a *app) status(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"service": "minecraft-console-client-web",
+		"service":      "minecraft-console-client-web",
 		"mccWebSocket": a.cfg.MCCURL,
 	})
 }

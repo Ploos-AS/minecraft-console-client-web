@@ -158,10 +158,10 @@ function updateStructuredEvent(message) {
   }
 }
 
-function sendCommand(command, parameters, display) {
+function sendText(text, display) {
   if (socket?.readyState !== WebSocket.OPEN) return false;
   const id = `ui-${++sequence}`;
-  socket.send(JSON.stringify({ type: 'command', id, command, parameters }));
+  socket.send(JSON.stringify({ type: 'text', id, text }));
   appendActivity('outgoing', display, id);
   return true;
 }
@@ -201,6 +201,10 @@ function connect() {
       appendActivity(message.success ? 'response' : 'error', message.success ? `Command ${message.id} succeeded` : `Command ${message.id} failed`, message.message || '');
       return;
     }
+    if (message.type === 'text-response') {
+      if (!message.success) appendActivity('error', `Text ${message.id} failed`, message.message || '');
+      return;
+    }
     if (message.type === 'event') {
       updateStructuredEvent(message);
       appendActivity('event', message.event, summarizeEvent(message));
@@ -218,7 +222,7 @@ chatForm.addEventListener('submit', (event) => {
   event.preventDefault();
   const value = chatInput.value.trim();
   if (!value || chatInput.disabled) return;
-  if (sendCommand('send', [value], value)) {
+  if (sendText(value, value)) {
     appendChat('outgoing', 'You', value);
     chatInput.value = '';
     chatInput.focus();
@@ -230,7 +234,7 @@ commandForm.addEventListener('submit', (event) => {
   const value = commandInput.value.trim();
   if (!value || commandInput.disabled) return;
   const command = value.startsWith('/') ? value : `/${value}`;
-  if (sendCommand(command, [], command)) {
+  if (sendText(command, command)) {
     commandInput.value = '';
     commandInput.focus();
   }

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Minecraft Console Client Web</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>MCC Web</h1>
+        <p>WebAdmin for Minecraft Console Client</p>
+      </div>
+      <span id="state" class="badge offline">offline</span>
+    </header>
+
+    <section class="panel">
+      <div id="log" class="log" aria-live="polite"></div>
+      <form id="command-form">
+        <input id="command" autocomplete="off" placeholder="Chat text or /MCC command" aria-label="Command">
+        <button type="submit">Send</button>
+      </form>
+    </section>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>

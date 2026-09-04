@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'work/**'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+      - name: Download modules
+        run: go mod download
+      - name: Format check
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Build
+        run: go build ./cmd/mcc-web
+      - name: Docker build
+        run: docker build -t minecraft-console-client-web:test .
+      - name: Container smoke test
+        run: |
+          docker run -d --name mcc-web-test \
+            -e MCC_WS_PASSWORD=test-only \
+            -p 127.0.0.1:18080:8080 \
+            minecraft-console-client-web:test
+          trap 'docker rm -f mcc-web-test >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:18080/api/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs mcc-web-test
+          exit 1

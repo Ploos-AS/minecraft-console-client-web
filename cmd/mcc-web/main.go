@@ -24,11 +24,11 @@ import (
 var webFS embed.FS
 
 type config struct {
-	ListenAddr     string
-	MCCURL         string
-	MCCPassword    string
-	WebUsername    string
-	WebPassword    string
+	ListenAddr  string
+	MCCURL      string
+	MCCPassword string
+	WebUsername string
+	WebPassword string
 }
 
 type app struct {

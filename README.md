@@ -13,7 +13,8 @@ The current implementation provides:
 - normalized browser protocol with correlated command responses
 - structured Minecraft chat for public, private and raw chat events
 - automatic authoritative state hydration after each MCC connection/reconnection
-- username, server host/port, gamemode, location, online player list/count, TPS and protocol version queried directly from MCC
+- username, UUID, server host/port, gamemode, location, online player list/count, latency, TPS and protocol version queried directly from MCC
+- read-only player inventory, inventory handling state and selected hotbar slot
 - live event-driven health, food, level, XP, TPS and world-time updates
 - player join/leave and disconnect activity layered on top of the hydrated state
 - separate MCC command input plus collapsible raw activity/event console
@@ -55,18 +56,23 @@ The structured WebAdmin consumes upstream events such as `OnChatPublic`, `OnChat
 
 ### Authoritative state hydration
 
-M0.8 no longer relies on join/leave events alone for session identity and server state. After every successful MCC WebSocket connection, and again after `OnGameJoined`, WebAdmin issues read-only WebSocketBot queries for:
+After every successful MCC WebSocket connection, and again after `OnGameJoined`, WebAdmin issues read-only WebSocketBot queries for:
 
 - `GetUsername`
+- `GetUserUUID`
 - `GetServerHost`
 - `GetServerPort`
 - `GetGamemode`
 - `GetCurrentLocation`
 - `GetOnlinePlayers`
+- `GetPlayersLatency`
 - `GetServerTPS`
 - `GetProtocolVersion`
+- `GetInventoryEnabled`
+- `GetPlayerInventory`
+- `GetCurrentSlot`
 
-Responses are correlated using the normalized browser command protocol and used to hydrate the dashboard. Live events then update relevant fields until the next reconnect. This means opening WebAdmin after players are already online still gives an authoritative player list rather than a count based only on events observed since page load.
+Responses are correlated using the normalized browser command protocol and used to hydrate the dashboard. Live events then update relevant fields until the next reconnect. Inventory is presented read-only; M0.9 does not add inventory mutation controls.
 
 ## Run locally
 

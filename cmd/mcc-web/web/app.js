@@ -3,17 +3,37 @@ const stateDot = document.getElementById('state-dot');
 const mccState = document.getElementById('mcc-state');
 const connectedAt = document.getElementById('connected-at');
 const attempts = document.getElementById('attempts');
+const health = document.getElementById('health');
+const food = document.getElementById('food');
+const level = document.getElementById('level');
+const xp = document.getElementById('xp');
+const tps = document.getElementById('tps');
+const worldTime = document.getElementById('world-time');
+const players = document.getElementById('players');
+const lastDisconnect = document.getElementById('last-disconnect');
 const bridgeState = document.getElementById('bridge-state');
 const log = document.getElementById('log');
-const form = document.getElementById('command-form');
-const input = document.getElementById('command');
-const send = document.getElementById('send');
+const chat = document.getElementById('chat');
+const commandForm = document.getElementById('command-form');
+const commandInput = document.getElementById('command');
+const commandSend = document.getElementById('send');
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const chatSend = document.getElementById('chat-send');
 const clear = document.getElementById('clear');
+const clearChat = document.getElementById('clear-chat');
 const logout = document.getElementById('logout');
+const observedPlayers = new Map();
 let sequence = 0;
 let socket;
 
-function append(kind, text, detail = '') {
+function boundedAppend(container, node, limit) {
+  container.appendChild(node);
+  while (container.children.length > limit) container.firstChild.remove();
+  container.scrollTop = container.scrollHeight;
+}
+
+function appendActivity(kind, text, detail = '') {
   const line = document.createElement('div');
   line.className = `line ${kind}`;
   const time = document.createElement('time');
@@ -26,13 +46,36 @@ function append(kind, text, detail = '') {
     extra.textContent = detail;
     line.append(extra);
   }
-  log.appendChild(line);
-  while (log.children.length > 500) log.firstChild.remove();
-  log.scrollTop = log.scrollHeight;
+  boundedAppend(log, line, 500);
+}
+
+function appendChat(kind, sender, message) {
+  const row = document.createElement('div');
+  row.className = `chat-row ${kind}`;
+  const meta = document.createElement('div');
+  const time = document.createElement('time');
+  time.textContent = new Date().toLocaleTimeString();
+  meta.appendChild(time);
+  if (sender) {
+    const name = document.createElement('strong');
+    name.textContent = sender;
+    meta.appendChild(name);
+  }
+  const body = document.createElement('p');
+  body.textContent = message;
+  row.append(meta, body);
+  boundedAppend(chat, row, 300);
 }
 
 function humanState(value) {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Unknown';
+}
+
+function setControlsReady(ready) {
+  commandInput.disabled = !ready;
+  commandSend.disabled = !ready;
+  chatInput.disabled = !ready;
+  chatSend.disabled = !ready;
 }
 
 function setStatus(status) {
@@ -43,20 +86,84 @@ function setStatus(status) {
   attempts.textContent = status?.attempts ?? 0;
   connectedAt.textContent = status?.connectedAt ? new Date(status.connectedAt).toLocaleString() : '—';
   const ready = value === 'connected' && socket?.readyState === WebSocket.OPEN;
-  input.disabled = !ready;
-  send.disabled = !ready;
-  if (status?.lastError) append('error', 'MCC connection error', status.lastError);
+  setControlsReady(ready);
+  if (status?.lastError) appendActivity('error', 'MCC connection error', status.lastError);
 }
 
 function summarizeEvent(message) {
   const data = message.data;
   if (typeof data === 'string') return data;
   if (data && typeof data === 'object') {
-    const text = data.message ?? data.text ?? data.rawText ?? data.username ?? data.playerName;
+    const text = data.message ?? data.text ?? data.rawText ?? data.username ?? data.playerName ?? data.name;
     if (typeof text === 'string') return text;
     return JSON.stringify(data);
   }
   return data == null ? '' : String(data);
+}
+
+function formatWorldTime(value) {
+  if (!Number.isFinite(value)) return '—';
+  const ticks = ((value % 24000) + 24000) % 24000;
+  const totalMinutes = Math.floor(((ticks + 6000) % 24000) / 1000 * 60);
+  const hours = Math.floor(totalMinutes / 60) % 24;
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function updateStructuredEvent(message) {
+  const data = message.data && typeof message.data === 'object' ? message.data : {};
+  switch (message.event) {
+    case 'OnChatPublic':
+      appendChat('public', data.sender || '', data.message || data.rawText || '');
+      break;
+    case 'OnChatPrivate':
+      appendChat('private', data.sender || '', data.message || data.rawText || '');
+      break;
+    case 'OnChatRaw':
+      if (data.text) appendChat('raw', '', data.text);
+      break;
+    case 'OnHealthUpdate':
+      health.textContent = Number.isFinite(data.health) ? Number(data.health).toFixed(1) : '—';
+      food.textContent = Number.isFinite(data.food) ? data.food : '—';
+      break;
+    case 'OnSetExperience':
+      level.textContent = Number.isFinite(data.level) ? data.level : '—';
+      xp.textContent = Number.isFinite(data.totalExperience) ? data.totalExperience : '—';
+      break;
+    case 'OnServerTpsUpdate':
+      tps.textContent = Number.isFinite(data.tps) ? Number(data.tps).toFixed(1) : '—';
+      break;
+    case 'OnTimeUpdate':
+      worldTime.textContent = formatWorldTime(data.timeOfDay);
+      break;
+    case 'OnPlayerJoin':
+      if (data.uuid || data.name) observedPlayers.set(data.uuid || data.name, data.name || data.uuid);
+      players.textContent = observedPlayers.size;
+      appendChat('system', '', `${data.name || 'Player'} joined`);
+      break;
+    case 'OnPlayerLeave':
+      if (data.uuid) observedPlayers.delete(data.uuid);
+      else if (data.name) {
+        for (const [id, name] of observedPlayers) if (name === data.name) observedPlayers.delete(id);
+      }
+      players.textContent = observedPlayers.size;
+      appendChat('system', '', `${data.name || 'Player'} left`);
+      break;
+    case 'OnDisconnect':
+      lastDisconnect.textContent = data.message || data.reason || 'Disconnected';
+      break;
+    case 'OnGameJoined':
+      lastDisconnect.textContent = '—';
+      break;
+  }
+}
+
+function sendCommand(command, parameters, display) {
+  if (socket?.readyState !== WebSocket.OPEN) return false;
+  const id = `ui-${++sequence}`;
+  socket.send(JSON.stringify({ type: 'command', id, command, parameters }));
+  appendActivity('outgoing', display, id);
+  return true;
 }
 
 function connect() {
@@ -66,56 +173,71 @@ function connect() {
 
   socket.addEventListener('open', () => {
     bridgeState.textContent = 'WebAdmin bridge connected';
-    append('system', 'WebAdmin bridge connected');
+    appendActivity('system', 'WebAdmin bridge connected');
   });
 
-  socket.addEventListener('close', () => {
+  socket.addEventListener('close', (event) => {
+    if (event.code === 1008 || event.code === 4401) {
+      location.assign('/login');
+      return;
+    }
     bridgeState.textContent = 'WebAdmin bridge disconnected — retrying…';
-    input.disabled = true;
-    send.disabled = true;
+    setControlsReady(false);
     stateDot.className = 'dot disconnected';
-    append('system', 'WebAdmin bridge disconnected');
+    appendActivity('system', 'WebAdmin bridge disconnected');
     setTimeout(connect, 1500);
   });
 
-  socket.addEventListener('error', () => append('error', 'WebAdmin WebSocket error'));
+  socket.addEventListener('error', () => appendActivity('error', 'WebAdmin WebSocket error'));
 
   socket.addEventListener('message', (event) => {
     let message;
-    try { message = JSON.parse(event.data); } catch { append('event', event.data); return; }
+    try { message = JSON.parse(event.data); } catch { appendActivity('event', event.data); return; }
     if (message.type === 'status') {
       setStatus(message.status);
       return;
     }
     if (message.type === 'command-response') {
-      append(message.success ? 'response' : 'error', message.success ? `Command ${message.id} succeeded` : `Command ${message.id} failed`, message.message || '');
+      appendActivity(message.success ? 'response' : 'error', message.success ? `Command ${message.id} succeeded` : `Command ${message.id} failed`, message.message || '');
       return;
     }
     if (message.type === 'event') {
-      append('event', message.event, summarizeEvent(message));
+      updateStructuredEvent(message);
+      appendActivity('event', message.event, summarizeEvent(message));
       return;
     }
     if (message.type === 'error') {
-      append('error', 'Protocol error', message.message || 'Unknown error');
+      appendActivity('error', 'Protocol error', message.message || 'Unknown error');
       return;
     }
-    append('event', 'Unknown message', JSON.stringify(message));
+    appendActivity('event', 'Unknown message', JSON.stringify(message));
   });
 }
 
-form.addEventListener('submit', (event) => {
+chatForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  const value = input.value.trim();
-  if (!value || socket?.readyState !== WebSocket.OPEN || input.disabled) return;
-  const id = `ui-${++sequence}`;
-  const payload = { type: 'command', id, command: value.startsWith('/') ? value : 'send', parameters: value.startsWith('/') ? [] : [value] };
-  socket.send(JSON.stringify(payload));
-  append('outgoing', value, id);
-  input.value = '';
-  input.focus();
+  const value = chatInput.value.trim();
+  if (!value || chatInput.disabled) return;
+  if (sendCommand('send', [value], value)) {
+    appendChat('outgoing', 'You', value);
+    chatInput.value = '';
+    chatInput.focus();
+  }
+});
+
+commandForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const value = commandInput.value.trim();
+  if (!value || commandInput.disabled) return;
+  const command = value.startsWith('/') ? value : `/${value}`;
+  if (sendCommand(command, [], command)) {
+    commandInput.value = '';
+    commandInput.focus();
+  }
 });
 
 clear.addEventListener('click', () => { log.textContent = ''; });
+clearChat.addEventListener('click', () => { chat.textContent = ''; });
 logout.addEventListener('click', async () => {
   logout.disabled = true;
   try {
@@ -124,6 +246,6 @@ logout.addEventListener('click', async () => {
     location.assign('/login');
   }
 });
-input.disabled = true;
-send.disabled = true;
+
+setControlsReady(false);
 connect();

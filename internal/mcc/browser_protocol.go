@@ -10,13 +10,14 @@ import (
 // BrowserRequest is the stable browser-to-WebAdmin envelope. Command requests
 // map to WebSocketBot JSON procedures. Text requests map to WebSocketBot's
 // plain-text path, which sends chat or an MCC internal command when prefixed
-// with '/'.
+// with '/'. Session actions are handled locally by WebAdmin.
 type BrowserRequest struct {
 	Type       string `json:"type"`
 	ID         string `json:"id"`
 	Command    string `json:"command,omitempty"`
 	Parameters []any  `json:"parameters,omitempty"`
 	Text       string `json:"text,omitempty"`
+	Action     string `json:"action,omitempty"`
 }
 
 // BrowserCommand remains as a compatibility alias for code that builds typed
@@ -33,6 +34,14 @@ type browserCommandResponse struct {
 type browserTextResponse struct {
 	Type    string `json:"type"`
 	ID      string `json:"id"`
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
+type browserSessionActionResponse struct {
+	Type    string `json:"type"`
+	ID      string `json:"id"`
+	Action  string `json:"action"`
 	Success bool   `json:"success"`
 	Message string `json:"message,omitempty"`
 }
@@ -62,6 +71,13 @@ func parseBrowserRequest(payload []byte) (BrowserRequest, error) {
 	case "text":
 		if request.Text == "" {
 			return BrowserRequest{}, fmt.Errorf("browser text request missing text")
+		}
+	case "session-action":
+		if request.Action == "" {
+			return BrowserRequest{}, fmt.Errorf("browser session action missing action")
+		}
+		if request.Action != "reconnect" {
+			return BrowserRequest{}, fmt.Errorf("unsupported browser session action %q", request.Action)
 		}
 	default:
 		return BrowserRequest{}, fmt.Errorf("unsupported browser message type %q", request.Type)
@@ -107,6 +123,10 @@ func commandResponseMessage(id string, response CommandResponse) browserMessage 
 
 func textResponseMessage(id string, success bool, message string) browserMessage {
 	return jsonBrowserMessage(browserTextResponse{Type: "text-response", ID: id, Success: success, Message: message})
+}
+
+func sessionActionResponseMessage(id, action string, success bool, message string) browserMessage {
+	return jsonBrowserMessage(browserSessionActionResponse{Type: "session-action-response", ID: id, Action: action, Success: success, Message: message})
 }
 
 func protocolErrorMessage(message string) browserMessage {

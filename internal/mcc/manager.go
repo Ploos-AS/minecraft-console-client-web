@@ -3,6 +3,7 @@ package mcc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+var errReconnectRequested = errors.New("MCC reconnect requested")
 
 type browserRequest struct {
 	request BrowserRequest
@@ -102,6 +105,28 @@ func (m *Manager) broadcast(msg browserMessage) {
 	}
 }
 
+func browserRequestFailure(request browserRequest, message string) browserMessage {
+	switch request.request.Type {
+	case "text":
+		return textResponseMessage(request.request.ID, false, message)
+	case "session-action":
+		return sessionActionResponseMessage(request.request.ID, request.request.Action, false, message)
+	default:
+		return commandResponseMessage(request.request.ID, CommandResponse{Success: false, Message: message})
+	}
+}
+
+func (m *Manager) failQueuedRequests(message string) {
+	for {
+		select {
+		case request := <-m.requests:
+			nonblockingReply(request.reply, browserRequestFailure(request, message))
+		default:
+			return
+		}
+	}
+}
+
 // ServeBrowser attaches one browser to the shared MCC session. Browser clients
 // speak the normalized WebAdmin protocol rather than raw MCC WebSocket frames.
 func (m *Manager) ServeBrowser(ctx context.Context, browser *websocket.Conn) error {
@@ -125,12 +150,21 @@ func (m *Manager) ServeBrowser(ctx context.Context, browser *websocket.Conn) err
 				continue
 			}
 			if m.Status().State != StateConnected {
-				if request.Type == "text" {
+				switch request.Type {
+				case "text":
 					nonblockingReply(events, textResponseMessage(request.ID, false, "MCC is not connected"))
-				} else {
+				case "session-action":
+					nonblockingReply(events, sessionActionResponseMessage(request.ID, request.Action, false, "MCC is not connected"))
+				default:
 					nonblockingReply(events, commandResponseMessage(request.ID, CommandResponse{Success: false, Message: "MCC is not connected"}))
 				}
 				continue
+			}
+			if request.Type == "session-action" && request.Action == "reconnect" {
+				// Stop admitting new browser work before the reconnect request reaches
+				// the shared connection loop. This prevents post-reconnect stale work
+				// from being accidentally replayed on the next MCC connection.
+				m.setStatus(StateDisconnected, 0, nil)
 			}
 			if err := m.send(ctx, browserRequest{request: request, reply: events}); err != nil {
 				return
@@ -191,6 +225,10 @@ func (m *Manager) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if errors.Is(err, errReconnectRequested) {
+			m.setStatus(StateDisconnected, 0, nil)
+			continue
+		}
 		m.setStatus(StateDisconnected, 1, err)
 	}
 }
@@ -226,15 +264,24 @@ func (m *Manager) runConnected(ctx context.Context, conn *websocket.Conn) error 
 		select {
 		case <-ctx.Done():
 			failPending("MCC connection closed")
+			m.failQueuedRequests("MCC connection closed")
 			return ctx.Err()
 		case err := <-errCh:
 			failPending("MCC connection lost")
+			m.failQueuedRequests("MCC connection lost")
 			return err
 		case queued := <-m.requests:
+			if queued.request.Type == "session-action" {
+				nonblockingReply(queued.reply, sessionActionResponseMessage(queued.request.ID, queued.request.Action, true, "reconnect requested"))
+				failPending("MCC reconnect requested")
+				m.failQueuedRequests("MCC reconnect requested")
+				return errReconnectRequested
+			}
 			if queued.request.Type == "text" {
 				if err := conn.WriteMessage(websocket.TextMessage, []byte(queued.request.Text)); err != nil {
 					nonblockingReply(queued.reply, textResponseMessage(queued.request.ID, false, "failed to send text to MCC"))
 					failPending("MCC connection lost")
+					m.failQueuedRequests("MCC connection lost")
 					return fmt.Errorf("write MCC text: %w", err)
 				}
 				nonblockingReply(queued.reply, textResponseMessage(queued.request.ID, true, ""))
@@ -245,6 +292,7 @@ func (m *Manager) runConnected(ctx context.Context, conn *websocket.Conn) error 
 			if err := conn.WriteJSON(command); err != nil {
 				nonblockingReply(queued.reply, commandResponseMessage(queued.request.ID, CommandResponse{Success: false, Message: "failed to send command to MCC"}))
 				failPending("MCC connection lost")
+				m.failQueuedRequests("MCC connection lost")
 				return fmt.Errorf("write MCC command: %w", err)
 			}
 			pending[upstreamID] = pendingCommand{browserID: queued.request.ID, reply: queued.reply}

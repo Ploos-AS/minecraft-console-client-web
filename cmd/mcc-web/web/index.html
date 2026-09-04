@@ -59,12 +59,19 @@
       </section>
 
       <aside class="panel side-panel">
-        <div class="panel-heading"><div><h2>Session</h2><p>Authoritative state from MCC</p></div></div>
+        <div class="panel-heading">
+          <div><h2>Session</h2><p>Authoritative state from MCC</p></div>
+          <div class="header-actions">
+            <button id="refresh-session" class="secondary" type="button" disabled>Refresh</button>
+            <button id="reconnect-session" class="secondary" type="button" disabled>Reconnect</button>
+          </div>
+        </div>
         <dl class="session-details">
           <div><dt>Connected since</dt><dd id="connected-at">—</dd></div>
           <div><dt>Player list</dt><dd id="player-list">—</dd></div>
           <div><dt>Last disconnect</dt><dd id="last-disconnect">—</dd></div>
           <div><dt>State refresh</dt><dd id="hydration-state">Waiting for MCC</dd></div>
+          <div><dt>Session action</dt><dd id="session-action-state">Waiting for MCC</dd></div>
         </dl>
         <form id="command-form" class="command-box"><label for="command">MCC command</label><div><input id="command" autocomplete="off" placeholder="/status" aria-label="MCC command"><button id="send" type="submit">Run</button></div></form>
       </aside>
@@ -80,5 +87,6 @@
   </main>
   <script src="/app.js" defer></script>
   <script src="/m11.js" defer></script>
+  <script src="/m12.js" defer></script>
 </body>
 </html>

@@ -18,6 +18,12 @@ const players = document.getElementById('players');
 const playerList = document.getElementById('player-list');
 const lastDisconnect = document.getElementById('last-disconnect');
 const hydrationState = document.getElementById('hydration-state');
+const uuid = document.getElementById('uuid');
+const currentSlot = document.getElementById('current-slot');
+const inventoryEnabled = document.getElementById('inventory-enabled');
+const selfLatency = document.getElementById('self-latency');
+const inventory = document.getElementById('inventory');
+const inventorySummary = document.getElementById('inventory-summary');
 const bridgeState = document.getElementById('bridge-state');
 const log = document.getElementById('log');
 const chat = document.getElementById('chat');
@@ -33,13 +39,18 @@ const logout = document.getElementById('logout');
 const observedPlayers = new Map();
 const hydrationCommands = [
   ['username', 'GetUsername'],
+  ['uuid', 'GetUserUUID'],
   ['server-host', 'GetServerHost'],
   ['server-port', 'GetServerPort'],
   ['gamemode', 'GetGamemode'],
   ['location', 'GetCurrentLocation'],
   ['players', 'GetOnlinePlayers'],
+  ['latency', 'GetPlayersLatency'],
   ['tps', 'GetServerTPS'],
   ['protocol', 'GetProtocolVersion'],
+  ['inventory-enabled', 'GetInventoryEnabled'],
+  ['inventory', 'GetPlayerInventory'],
+  ['current-slot', 'GetCurrentSlot'],
 ];
 let sequence = 0;
 let socket;
@@ -99,17 +110,27 @@ function setControlsReady(ready) {
   chatSend.disabled = !ready;
 }
 
+function resetInventory() {
+  inventory.textContent = '';
+  inventorySummary.textContent = 'Waiting';
+  inventoryEnabled.textContent = '—';
+  currentSlot.textContent = '—';
+}
+
 function resetAuthoritativeState() {
   username.textContent = '—';
+  uuid.textContent = '—';
   server.textContent = '—';
   gamemode.textContent = '—';
   protocol.textContent = '—';
   locationValue.textContent = '—';
   players.textContent = '—';
   playerList.textContent = '—';
+  selfLatency.textContent = '—';
   serverHost = '';
   serverPort = '';
   hydrationPending.clear();
+  resetInventory();
 }
 
 function updateServerLabel() {
@@ -168,9 +189,9 @@ function formatGamemode(value) {
 
 function formatLocation(data) {
   if (!data || typeof data !== 'object') return '—';
-  const x = Number(data.x);
-  const y = Number(data.y);
-  const z = Number(data.z);
+  const x = Number(data.x ?? data.X);
+  const y = Number(data.y ?? data.Y);
+  const z = Number(data.z ?? data.Z);
   if (![x, y, z].every(Number.isFinite)) return '—';
   return `${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}`;
 }
@@ -186,14 +207,57 @@ function sendCommand(command, id = `ui-${++sequence}`, parameters = []) {
   return true;
 }
 
+function itemType(item) {
+  const value = item?.type ?? item?.Type ?? item?.itemType ?? item?.ItemType ?? 'Unknown';
+  return typeof value === 'object' ? JSON.stringify(value) : String(value);
+}
+
+function itemCount(item) {
+  const value = Number(item?.count ?? item?.Count ?? 1);
+  return Number.isFinite(value) ? value : 1;
+}
+
+function renderInventory(data) {
+  inventory.textContent = '';
+  const items = data?.items ?? data?.Items ?? data;
+  if (!items || typeof items !== 'object' || Array.isArray(items)) {
+    inventorySummary.textContent = 'Unavailable';
+    return;
+  }
+  const entries = Object.entries(items)
+    .map(([slot, item]) => [Number(slot), item])
+    .filter(([slot, item]) => Number.isFinite(slot) && item)
+    .sort((a, b) => a[0] - b[0]);
+  inventorySummary.textContent = `${entries.length} occupied`;
+  if (!entries.length) {
+    const empty = document.createElement('p');
+    empty.className = 'inventory-empty';
+    empty.textContent = 'No occupied inventory slots reported';
+    inventory.appendChild(empty);
+    return;
+  }
+  for (const [slot, item] of entries) {
+    const card = document.createElement('div');
+    card.className = 'inventory-slot';
+    if (Number(currentSlot.textContent) === slot) card.classList.add('selected');
+    const slotLabel = document.createElement('span');
+    slotLabel.textContent = `Slot ${slot}`;
+    const name = document.createElement('strong');
+    name.textContent = itemType(item);
+    name.title = name.textContent;
+    const count = document.createElement('small');
+    count.textContent = `×${itemCount(item)}`;
+    card.append(slotLabel, name, count);
+    inventory.appendChild(card);
+  }
+}
+
 function beginHydration() {
   resetAuthoritativeState();
   hydrationPending = new Set(hydrationCommands.map(([key]) => key));
   hydrationState.textContent = `Refreshing ${hydrationPending.size} fields…`;
   for (const [key, command] of hydrationCommands) {
-    if (!sendCommand(command, `hydrate:${key}`)) {
-      hydrationPending.delete(key);
-    }
+    if (!sendCommand(command, `hydrate:${key}`)) hydrationPending.delete(key);
   }
   if (hydrationPending.size === 0) hydrationState.textContent = 'Refresh unavailable';
 }
@@ -208,6 +272,7 @@ function handleHydrationResponse(message) {
   const key = message.id.slice('hydrate:'.length);
   if (!message.success) {
     appendActivity('error', `State query ${key} failed`, message.message || '');
+    if (key === 'inventory') inventorySummary.textContent = 'Unavailable';
     finishHydrationField(key);
     return true;
   }
@@ -215,6 +280,9 @@ function handleHydrationResponse(message) {
   switch (key) {
     case 'username':
       username.textContent = data?.username || '—';
+      break;
+    case 'uuid':
+      uuid.textContent = data?.uuid || String(data ?? '—');
       break;
     case 'server-host':
       serverHost = data?.host || '';
@@ -238,11 +306,26 @@ function handleHydrationResponse(message) {
       for (const name of list) observedPlayers.set(name, name);
       break;
     }
+    case 'latency': {
+      const values = data && typeof data === 'object' ? data : {};
+      const own = values[username.textContent];
+      selfLatency.textContent = Number.isFinite(own) ? `${own} ms` : '—';
+      break;
+    }
     case 'tps':
       tps.textContent = Number.isFinite(data?.tps) ? Number(data.tps).toFixed(1) : '—';
       break;
     case 'protocol':
       protocol.textContent = data?.protocolVersion ?? '—';
+      break;
+    case 'inventory-enabled':
+      inventoryEnabled.textContent = data?.enabled === true ? 'Enabled' : data?.enabled === false ? 'Disabled' : '—';
+      break;
+    case 'inventory':
+      renderInventory(data);
+      break;
+    case 'current-slot':
+      currentSlot.textContent = data?.slot ?? data?.currentSlot ?? String(data ?? '—');
       break;
   }
   finishHydrationField(key);
@@ -286,9 +369,7 @@ function updateStructuredEvent(message) {
       break;
     case 'OnPlayerLeave':
       if (data.uuid) observedPlayers.delete(data.uuid);
-      else if (data.name) {
-        for (const [id, name] of observedPlayers) if (name === data.name) observedPlayers.delete(id);
-      }
+      else if (data.name) for (const [id, name] of observedPlayers) if (name === data.name) observedPlayers.delete(id);
       players.textContent = String(observedPlayers.size);
       playerList.textContent = [...observedPlayers.values()].join(', ') || 'No players reported';
       appendChat('system', '', `${data.name || 'Player'} left`);
@@ -301,6 +382,13 @@ function updateStructuredEvent(message) {
     case 'OnGameJoined':
       lastDisconnect.textContent = '—';
       if (socket?.readyState === WebSocket.OPEN) beginHydration();
+      break;
+    case 'OnInventoryUpdate':
+    case 'OnHeldItemChange':
+      if (socket?.readyState === WebSocket.OPEN) {
+        sendCommand('GetPlayerInventory', 'hydrate:inventory');
+        sendCommand('GetCurrentSlot', 'hydrate:current-slot');
+      }
       break;
   }
 }

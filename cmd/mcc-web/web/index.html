@@ -15,10 +15,7 @@
         <p class="subtitle">WebAdmin</p>
       </div>
       <div class="header-actions">
-        <div class="connection">
-          <span id="state-dot" class="dot"></span>
-          <span id="state">disconnected</span>
-        </div>
+        <div class="connection"><span id="state-dot" class="dot"></span><span id="state">disconnected</span></div>
         <button id="logout" class="secondary" type="button">Sign out</button>
       </div>
     </header>
@@ -38,18 +35,27 @@
       <article><span class="label">Reconnect attempts</span><strong id="attempts">0</strong></article>
     </section>
 
+    <section class="detail-grid">
+      <section class="panel">
+        <div class="panel-heading"><div><h2>Player</h2><p>Read-only MCC account and session detail</p></div></div>
+        <dl class="session-details compact-details">
+          <div><dt>UUID</dt><dd id="uuid">—</dd></div>
+          <div><dt>Selected hotbar slot</dt><dd id="current-slot">—</dd></div>
+          <div><dt>Inventory handling</dt><dd id="inventory-enabled">—</dd></div>
+          <div><dt>Latency</dt><dd id="self-latency">—</dd></div>
+        </dl>
+      </section>
+      <section class="panel inventory-panel">
+        <div class="panel-heading"><div><h2>Inventory</h2><p>Read-only player inventory from MCC</p></div><span id="inventory-summary" class="panel-badge">Waiting</span></div>
+        <div id="inventory" class="inventory-grid" aria-label="Player inventory"></div>
+      </section>
+    </section>
+
     <section class="workspace">
       <section class="panel chat-panel">
-        <div class="panel-heading">
-          <div><h2>Chat</h2><p>Public, private and raw chat from MCC</p></div>
-          <button id="clear-chat" class="secondary" type="button">Clear</button>
-        </div>
+        <div class="panel-heading"><div><h2>Chat</h2><p>Public, private and raw chat from MCC</p></div><button id="clear-chat" class="secondary" type="button">Clear</button></div>
         <div id="chat" class="chat" aria-live="polite" aria-label="Minecraft chat"></div>
-        <form id="chat-form" class="composer">
-          <span class="prompt">›</span>
-          <input id="chat-input" autocomplete="off" placeholder="Send chat message" aria-label="Chat message">
-          <button id="chat-send" type="submit">Send</button>
-        </form>
+        <form id="chat-form" class="composer"><span class="prompt">›</span><input id="chat-input" autocomplete="off" placeholder="Send chat message" aria-label="Chat message"><button id="chat-send" type="submit">Send</button></form>
       </section>
 
       <aside class="panel side-panel">
@@ -60,10 +66,7 @@
           <div><dt>Last disconnect</dt><dd id="last-disconnect">—</dd></div>
           <div><dt>State refresh</dt><dd id="hydration-state">Waiting for MCC</dd></div>
         </dl>
-        <form id="command-form" class="command-box">
-          <label for="command">MCC command</label>
-          <div><input id="command" autocomplete="off" placeholder="/status" aria-label="MCC command"><button id="send" type="submit">Run</button></div>
-        </form>
+        <form id="command-form" class="command-box"><label for="command">MCC command</label><div><input id="command" autocomplete="off" placeholder="/status" aria-label="MCC command"><button id="send" type="submit">Run</button></div></form>
       </aside>
     </section>
 
@@ -73,7 +76,7 @@
       <div id="log" class="log" aria-live="polite" aria-label="MCC event log"></div>
     </details>
 
-    <footer><span id="bridge-state">Connecting to WebAdmin…</span><span>Initial state is queried from MCC after every reconnect</span></footer>
+    <footer><span id="bridge-state">Connecting to WebAdmin…</span><span>Read-only state is queried from MCC after every reconnect</span></footer>
   </main>
   <script src="/app.js" defer></script>
 </body>

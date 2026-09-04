@@ -21,13 +21,13 @@ const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
 const socket = new WebSocket(`${scheme}://${location.host}/ws`);
 
 socket.addEventListener('open', () => {
-  setState('online');
+  setState('bridge-online');
   append('system', 'Connected to MCC Web bridge');
 });
 
 socket.addEventListener('close', () => {
   setState('offline');
-  append('system', 'Connection closed');
+  append('system', 'Bridge connection closed');
 });
 
 socket.addEventListener('error', () => append('error', 'WebSocket error'));
@@ -35,6 +35,12 @@ socket.addEventListener('error', () => append('error', 'WebSocket error'));
 socket.addEventListener('message', (event) => {
   try {
     const parsed = JSON.parse(event.data);
+    if (parsed.type === 'mcc-web-status' && parsed.status) {
+      setState(parsed.status.state);
+      const suffix = parsed.status.lastError ? `: ${parsed.status.lastError}` : '';
+      append('system', `MCC ${parsed.status.state}${suffix}`);
+      return;
+    }
     if (parsed.type === 'error') {
       append('error', parsed.message || event.data);
       return;

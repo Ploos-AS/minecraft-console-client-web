@@ -12,8 +12,10 @@ The current implementation provides:
 - one shared authenticated MCC WebSocket session
 - normalized browser protocol with correlated command responses
 - structured Minecraft chat for public, private and raw chat events
-- live MCC status cards for health, food, level, XP, TPS and world time
-- observed player join/leave activity and last disconnect state
+- automatic authoritative state hydration after each MCC connection/reconnection
+- username, server host/port, gamemode, location, online player list/count, TPS and protocol version queried directly from MCC
+- live event-driven health, food, level, XP, TPS and world-time updates
+- player join/leave and disconnect activity layered on top of the hydrated state
 - separate MCC command input plus collapsible raw activity/event console
 - native WebAdmin username/password login with server-side sessions
 - authenticated UI, `/api/status` and browser WebSocket
@@ -49,9 +51,22 @@ Keep the MCC WebSocket endpoint on a private container or host network. Expose o
 
 Configure and load upstream `config/ChatBots/WebSocketBot.cs` in MCC. Use a strong unique WebSocket password and pass the same value to this service as `MCC_WS_PASSWORD`.
 
-M0.7 consumes the upstream WebSocketBot events `OnChatPublic`, `OnChatPrivate`, `OnChatRaw`, `OnHealthUpdate`, `OnSetExperience`, `OnServerTpsUpdate`, `OnTimeUpdate`, `OnPlayerJoin`, `OnPlayerLeave`, `OnDisconnect` and `OnGameJoined` to build the structured WebAdmin view. The raw normalized event stream remains available under **Raw activity** for debugging and unsupported events.
+The structured WebAdmin consumes upstream events such as `OnChatPublic`, `OnChatPrivate`, `OnChatRaw`, `OnHealthUpdate`, `OnSetExperience`, `OnServerTpsUpdate`, `OnTimeUpdate`, `OnPlayerJoin`, `OnPlayerLeave`, `OnDisconnect` and `OnGameJoined`. The raw normalized event stream remains available under **Raw activity** for debugging and unsupported events.
 
-The observed-player count reflects join/leave events seen by the current WebAdmin process; it is not presented as an authoritative server player count.
+### Authoritative state hydration
+
+M0.8 no longer relies on join/leave events alone for session identity and server state. After every successful MCC WebSocket connection, and again after `OnGameJoined`, WebAdmin issues read-only WebSocketBot queries for:
+
+- `GetUsername`
+- `GetServerHost`
+- `GetServerPort`
+- `GetGamemode`
+- `GetCurrentLocation`
+- `GetOnlinePlayers`
+- `GetServerTPS`
+- `GetProtocolVersion`
+
+Responses are correlated using the normalized browser command protocol and used to hydrate the dashboard. Live events then update relevant fields until the next reconnect. This means opening WebAdmin after players are already online still gives an authoritative player list rather than a count based only on events observed since page load.
 
 ## Run locally
 

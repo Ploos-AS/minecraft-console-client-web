@@ -3,6 +3,11 @@ const stateDot = document.getElementById('state-dot');
 const mccState = document.getElementById('mcc-state');
 const connectedAt = document.getElementById('connected-at');
 const attempts = document.getElementById('attempts');
+const username = document.getElementById('username');
+const server = document.getElementById('server');
+const gamemode = document.getElementById('gamemode');
+const protocol = document.getElementById('protocol');
+const locationValue = document.getElementById('location');
 const health = document.getElementById('health');
 const food = document.getElementById('food');
 const level = document.getElementById('level');
@@ -10,7 +15,9 @@ const xp = document.getElementById('xp');
 const tps = document.getElementById('tps');
 const worldTime = document.getElementById('world-time');
 const players = document.getElementById('players');
+const playerList = document.getElementById('player-list');
 const lastDisconnect = document.getElementById('last-disconnect');
+const hydrationState = document.getElementById('hydration-state');
 const bridgeState = document.getElementById('bridge-state');
 const log = document.getElementById('log');
 const chat = document.getElementById('chat');
@@ -24,8 +31,22 @@ const clear = document.getElementById('clear');
 const clearChat = document.getElementById('clear-chat');
 const logout = document.getElementById('logout');
 const observedPlayers = new Map();
+const hydrationCommands = [
+  ['username', 'GetUsername'],
+  ['server-host', 'GetServerHost'],
+  ['server-port', 'GetServerPort'],
+  ['gamemode', 'GetGamemode'],
+  ['location', 'GetCurrentLocation'],
+  ['players', 'GetOnlinePlayers'],
+  ['tps', 'GetServerTPS'],
+  ['protocol', 'GetProtocolVersion'],
+];
 let sequence = 0;
 let socket;
+let hydratedConnection = '';
+let hydrationPending = new Set();
+let serverHost = '';
+let serverPort = '';
 
 function boundedAppend(container, node, limit) {
   container.appendChild(node);
@@ -78,6 +99,28 @@ function setControlsReady(ready) {
   chatSend.disabled = !ready;
 }
 
+function resetAuthoritativeState() {
+  username.textContent = '—';
+  server.textContent = '—';
+  gamemode.textContent = '—';
+  protocol.textContent = '—';
+  locationValue.textContent = '—';
+  players.textContent = '—';
+  playerList.textContent = '—';
+  serverHost = '';
+  serverPort = '';
+  hydrationPending.clear();
+}
+
+function updateServerLabel() {
+  if (!serverHost && !serverPort) {
+    server.textContent = '—';
+    return;
+  }
+  server.textContent = serverPort ? `${serverHost || '?'}:${serverPort}` : serverHost;
+  server.title = server.textContent;
+}
+
 function setStatus(status) {
   const value = status?.state || 'disconnected';
   state.textContent = value;
@@ -87,6 +130,14 @@ function setStatus(status) {
   connectedAt.textContent = status?.connectedAt ? new Date(status.connectedAt).toLocaleString() : '—';
   const ready = value === 'connected' && socket?.readyState === WebSocket.OPEN;
   setControlsReady(ready);
+  if (!ready) {
+    hydratedConnection = '';
+    hydrationState.textContent = 'Waiting for MCC';
+  }
+  if (ready && status?.connectedAt && hydratedConnection !== status.connectedAt) {
+    hydratedConnection = status.connectedAt;
+    beginHydration();
+  }
   if (status?.lastError) appendActivity('error', 'MCC connection error', status.lastError);
 }
 
@@ -108,6 +159,94 @@ function formatWorldTime(value) {
   const hours = Math.floor(totalMinutes / 60) % 24;
   const minutes = totalMinutes % 60;
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function formatGamemode(value) {
+  const names = ['Survival', 'Creative', 'Adventure', 'Spectator'];
+  return Number.isInteger(value) && names[value] ? names[value] : String(value ?? '—');
+}
+
+function formatLocation(data) {
+  if (!data || typeof data !== 'object') return '—';
+  const x = Number(data.x);
+  const y = Number(data.y);
+  const z = Number(data.z);
+  if (![x, y, z].every(Number.isFinite)) return '—';
+  return `${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}`;
+}
+
+function parseResponseMessage(message) {
+  if (!message) return null;
+  try { return JSON.parse(message); } catch { return message; }
+}
+
+function sendCommand(command, id = `ui-${++sequence}`, parameters = []) {
+  if (socket?.readyState !== WebSocket.OPEN) return false;
+  socket.send(JSON.stringify({ type: 'command', id, command, parameters }));
+  return true;
+}
+
+function beginHydration() {
+  resetAuthoritativeState();
+  hydrationPending = new Set(hydrationCommands.map(([key]) => key));
+  hydrationState.textContent = `Refreshing ${hydrationPending.size} fields…`;
+  for (const [key, command] of hydrationCommands) {
+    if (!sendCommand(command, `hydrate:${key}`)) {
+      hydrationPending.delete(key);
+    }
+  }
+  if (hydrationPending.size === 0) hydrationState.textContent = 'Refresh unavailable';
+}
+
+function finishHydrationField(key) {
+  hydrationPending.delete(key);
+  hydrationState.textContent = hydrationPending.size === 0 ? 'Authoritative state loaded' : `Refreshing ${hydrationPending.size} fields…`;
+}
+
+function handleHydrationResponse(message) {
+  if (!message.id?.startsWith('hydrate:')) return false;
+  const key = message.id.slice('hydrate:'.length);
+  if (!message.success) {
+    appendActivity('error', `State query ${key} failed`, message.message || '');
+    finishHydrationField(key);
+    return true;
+  }
+  const data = parseResponseMessage(message.message);
+  switch (key) {
+    case 'username':
+      username.textContent = data?.username || '—';
+      break;
+    case 'server-host':
+      serverHost = data?.host || '';
+      updateServerLabel();
+      break;
+    case 'server-port':
+      serverPort = data?.port ?? '';
+      updateServerLabel();
+      break;
+    case 'gamemode':
+      gamemode.textContent = formatGamemode(data?.gamemode);
+      break;
+    case 'location':
+      locationValue.textContent = formatLocation(data);
+      break;
+    case 'players': {
+      const list = Array.isArray(data) ? data : [];
+      players.textContent = String(list.length);
+      playerList.textContent = list.length ? list.join(', ') : 'No players reported';
+      observedPlayers.clear();
+      for (const name of list) observedPlayers.set(name, name);
+      break;
+    }
+    case 'tps':
+      tps.textContent = Number.isFinite(data?.tps) ? Number(data.tps).toFixed(1) : '—';
+      break;
+    case 'protocol':
+      protocol.textContent = data?.protocolVersion ?? '—';
+      break;
+  }
+  finishHydrationField(key);
+  return true;
 }
 
 function updateStructuredEvent(message) {
@@ -136,9 +275,13 @@ function updateStructuredEvent(message) {
     case 'OnTimeUpdate':
       worldTime.textContent = formatWorldTime(data.timeOfDay);
       break;
+    case 'OnGamemodeUpdate':
+      if (data.playerName === username.textContent) gamemode.textContent = formatGamemode(data.gamemode);
+      break;
     case 'OnPlayerJoin':
       if (data.uuid || data.name) observedPlayers.set(data.uuid || data.name, data.name || data.uuid);
-      players.textContent = observedPlayers.size;
+      players.textContent = String(observedPlayers.size);
+      playerList.textContent = [...observedPlayers.values()].join(', ') || 'No players reported';
       appendChat('system', '', `${data.name || 'Player'} joined`);
       break;
     case 'OnPlayerLeave':
@@ -146,14 +289,18 @@ function updateStructuredEvent(message) {
       else if (data.name) {
         for (const [id, name] of observedPlayers) if (name === data.name) observedPlayers.delete(id);
       }
-      players.textContent = observedPlayers.size;
+      players.textContent = String(observedPlayers.size);
+      playerList.textContent = [...observedPlayers.values()].join(', ') || 'No players reported';
       appendChat('system', '', `${data.name || 'Player'} left`);
       break;
     case 'OnDisconnect':
       lastDisconnect.textContent = data.message || data.reason || 'Disconnected';
+      resetAuthoritativeState();
+      hydrationState.textContent = 'Waiting for MCC';
       break;
     case 'OnGameJoined':
       lastDisconnect.textContent = '—';
+      if (socket?.readyState === WebSocket.OPEN) beginHydration();
       break;
   }
 }
@@ -184,6 +331,9 @@ function connect() {
     bridgeState.textContent = 'WebAdmin bridge disconnected — retrying…';
     setControlsReady(false);
     stateDot.className = 'dot disconnected';
+    hydratedConnection = '';
+    resetAuthoritativeState();
+    hydrationState.textContent = 'Waiting for MCC';
     appendActivity('system', 'WebAdmin bridge disconnected');
     setTimeout(connect, 1500);
   });
@@ -198,6 +348,7 @@ function connect() {
       return;
     }
     if (message.type === 'command-response') {
+      if (handleHydrationResponse(message)) return;
       appendActivity(message.success ? 'response' : 'error', message.success ? `Command ${message.id} succeeded` : `Command ${message.id} failed`, message.message || '');
       return;
     }
@@ -252,4 +403,5 @@ logout.addEventListener('click', async () => {
 });
 
 setControlsReady(false);
+resetAuthoritativeState();
 connect();

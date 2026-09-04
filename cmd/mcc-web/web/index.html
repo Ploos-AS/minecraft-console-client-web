@@ -25,10 +25,16 @@
 
     <section class="stats" aria-label="MCC status">
       <article><span class="label">MCC</span><strong id="mcc-state">Disconnected</strong></article>
+      <article><span class="label">Account</span><strong id="username">—</strong></article>
+      <article><span class="label">Server</span><strong id="server">—</strong></article>
+      <article><span class="label">Gamemode</span><strong id="gamemode">—</strong></article>
+      <article><span class="label">Online players</span><strong id="players">—</strong></article>
+      <article><span class="label">Server TPS</span><strong id="tps">—</strong></article>
       <article><span class="label">Health / food</span><strong><span id="health">—</span> / <span id="food">—</span></strong></article>
       <article><span class="label">Level / XP</span><strong><span id="level">—</span> / <span id="xp">—</span></strong></article>
-      <article><span class="label">Server TPS</span><strong id="tps">—</strong></article>
       <article><span class="label">World time</span><strong id="world-time">—</strong></article>
+      <article><span class="label">Location</span><strong id="location">—</strong></article>
+      <article><span class="label">Protocol</span><strong id="protocol">—</strong></article>
       <article><span class="label">Reconnect attempts</span><strong id="attempts">0</strong></article>
     </section>
 
@@ -47,11 +53,12 @@
       </section>
 
       <aside class="panel side-panel">
-        <div class="panel-heading"><div><h2>Session</h2><p>Live MCC state</p></div></div>
+        <div class="panel-heading"><div><h2>Session</h2><p>Authoritative state from MCC</p></div></div>
         <dl class="session-details">
           <div><dt>Connected since</dt><dd id="connected-at">—</dd></div>
-          <div><dt>Observed players</dt><dd id="players">0</dd></div>
+          <div><dt>Player list</dt><dd id="player-list">—</dd></div>
           <div><dt>Last disconnect</dt><dd id="last-disconnect">—</dd></div>
+          <div><dt>State refresh</dt><dd id="hydration-state">Waiting for MCC</dd></div>
         </dl>
         <form id="command-form" class="command-box">
           <label for="command">MCC command</label>
@@ -66,7 +73,7 @@
       <div id="log" class="log" aria-live="polite" aria-label="MCC event log"></div>
     </details>
 
-    <footer><span id="bridge-state">Connecting to WebAdmin…</span><span>Structured from MCC WebSocketBot events</span></footer>
+    <footer><span id="bridge-state">Connecting to WebAdmin…</span><span>Initial state is queried from MCC after every reconnect</span></footer>
   </main>
   <script src="/app.js" defer></script>
 </body>

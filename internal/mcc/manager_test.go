@@ -88,7 +88,7 @@ func TestManagerFansOutOneUpstreamEventToMultipleSubscribers(t *testing.T) {
 	drainInitialStatus(t, b)
 	close(sendEvent)
 
-	want := `{"event":"OnChatRaw","data":"{}"}`
+	want := `{"type":"event","event":"OnChatRaw","data":{}}`
 	if got := readTextPayload(t, a); got != want {
 		t.Fatalf("subscriber A payload = %q, want %q", got, want)
 	}

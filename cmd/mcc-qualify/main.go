@@ -39,32 +39,40 @@ func main() {
 		os.Exit(2)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
-	defer cancel()
-
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, *url, nil)
-	if err != nil {
-		fail("connect", err)
-	}
-	defer conn.Close()
-	_ = conn.SetReadDeadline(time.Now().Add(*timeout))
-
-	if err := conn.WriteJSON(command{Command: "Authenticate", RequestID: "qual-auth", Parameters: []any{*password}}); err != nil {
-		fail("send authentication", err)
-	}
-	if err := awaitResponse(conn, "qual-auth"); err != nil {
-		fail("authenticate", err)
+	if err := qualify(context.Background(), *url, *password, *timeout); err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL runtime-qualification: %v\n", err)
+		os.Exit(1)
 	}
 	fmt.Println("PASS auth")
-
-	if err := conn.WriteJSON(command{Command: "GetItemTypeMappings", RequestID: "qual-items", Parameters: []any{}}); err != nil {
-		fail("send protocol probe", err)
-	}
-	if err := awaitResponse(conn, "qual-items"); err != nil {
-		fail("protocol probe", err)
-	}
 	fmt.Println("PASS command-response")
 	fmt.Println("PASS runtime-qualification")
+}
+
+func qualify(parent context.Context, url, password string, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, url, nil)
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(timeout))
+
+	if err := conn.WriteJSON(command{Command: "Authenticate", RequestID: "qual-auth", Parameters: []any{password}}); err != nil {
+		return fmt.Errorf("send authentication: %w", err)
+	}
+	if err := awaitResponse(conn, "qual-auth"); err != nil {
+		return fmt.Errorf("authenticate: %w", err)
+	}
+
+	if err := conn.WriteJSON(command{Command: "GetItemTypeMappings", RequestID: "qual-items", Parameters: []any{}}); err != nil {
+		return fmt.Errorf("send protocol probe: %w", err)
+	}
+	if err := awaitResponse(conn, "qual-items"); err != nil {
+		return fmt.Errorf("protocol probe: %w", err)
+	}
+	return nil
 }
 
 func awaitResponse(conn *websocket.Conn, requestID string) error {
@@ -96,9 +104,4 @@ func env(key, fallback string) string {
 		return value
 	}
 	return fallback
-}
-
-func fail(stage string, err error) {
-	fmt.Fprintf(os.Stderr, "FAIL %s: %v\n", stage, err)
-	os.Exit(1)
 }

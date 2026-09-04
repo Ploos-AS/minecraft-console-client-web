@@ -9,6 +9,22 @@
   let attachedSocket = null;
   let reconnectRequestID = '';
 
+  // M1.2 owns session-action responses. app.js predates that browser message
+  // type, so prevent its generic fallback from presenting a handled response
+  // as an unknown protocol message.
+  const baseAppendActivity = appendActivity;
+  appendActivity = function appendM12AwareActivity(kind, text, detail = '') {
+    if (text === 'Unknown message' && typeof detail === 'string') {
+      try {
+        const message = JSON.parse(detail);
+        if (message?.type === 'session-action-response') return;
+      } catch {
+        // Preserve the original activity entry for malformed/other details.
+      }
+    }
+    baseAppendActivity(kind, text, detail);
+  };
+
   function ready() {
     return socket?.readyState === WebSocket.OPEN && state?.textContent === 'connected';
   }
@@ -40,10 +56,20 @@
   function handleMessage(event) {
     let message;
     try { message = JSON.parse(event.data); } catch { return; }
-    if (message.type !== 'session-action-response' || message.id !== reconnectRequestID) return;
+    if (message.type !== 'session-action-response') return;
+
+    if (message.id !== reconnectRequestID) {
+      baseAppendActivity(
+        message.success ? 'response' : 'error',
+        message.success ? 'Session action succeeded' : 'Session action failed',
+        message.message || message.id || '',
+      );
+      return;
+    }
+
     if (!message.success) {
       clearBusy(message.message || 'Reconnect failed');
-      appendActivity('error', 'Reconnect request failed', message.message || '');
+      baseAppendActivity('error', 'Reconnect request failed', message.message || '');
       return;
     }
     actionState.textContent = 'Reconnect accepted — waiting for MCC…';
@@ -61,7 +87,7 @@
     if (!ready()) return;
     setBusy('Refreshing authoritative state…');
     beginHydration();
-    appendActivity('system', 'Manual state refresh requested');
+    baseAppendActivity('system', 'Manual state refresh requested');
     const observer = new MutationObserver(() => {
       if (!hydrationState.textContent.startsWith('Refreshing')) {
         observer.disconnect();
@@ -77,7 +103,7 @@
     reconnectRequestID = `session-${Date.now()}`;
     setBusy('Requesting MCC reconnect…');
     socket.send(JSON.stringify({ type: 'session-action', id: reconnectRequestID, action: 'reconnect' }));
-    appendActivity('system', 'Shared MCC reconnect requested', reconnectRequestID);
+    baseAppendActivity('system', 'Shared MCC reconnect requested', reconnectRequestID);
   });
 
   const statusObserver = new MutationObserver(() => {

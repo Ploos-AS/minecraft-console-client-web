@@ -31,6 +31,14 @@ jobs:
         run: go build ./cmd/mcc-web
       - name: Build qualifier
         run: go build ./cmd/mcc-qualify
+      - name: Packaging checks
+        env:
+          MCC_WS_PASSWORD: test-only
+          MCC_WEB_PASSWORD: web-test-only
+        run: |
+          docker compose config >/dev/null
+          grep -F 'ghcr.io/ploos-as/minecraft-console-client-web:0.1.0' compose.yaml
+          grep -F 'Image=ghcr.io/ploos-as/minecraft-console-client-web:0.1.0' quadlet/minecraft-console-client-web.container
       - name: Docker build
         run: docker build -t minecraft-console-client-web:test .
       - name: Container smoke test

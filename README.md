@@ -6,29 +6,29 @@ This project does **not** embed or fork MCC. It connects to MCC's external `WebS
 
 ## Status
 
-Early bootstrap / M0. The current implementation provides:
+The current implementation provides:
 
-- Go backend with embedded static frontend
-- browser-to-MCC WebSocket bridge
-- server-side MCC WebSocket authentication
-- live display of MCC WebSocket events
-- send chat text and MCC `/commands` from the browser
-- `/api/healthz` and `/api/status`
+- Go backend with embedded responsive WebAdmin
+- one shared authenticated MCC WebSocket session
+- normalized browser protocol with correlated command responses
+- live MCC event/console view and command/chat input
+- native WebAdmin username/password login with server-side sessions
+- authenticated UI, `/api/status` and browser WebSocket
+- unauthenticated `/api/healthz` for container health checks
 - graceful SIGTERM/SIGINT shutdown
 - Alpine 3.22 runtime image
 - non-root UID/GID 1000
-- Docker Compose example
-- rootless Podman Quadlet example
-- CI for formatting, vet, tests, Go build, container build and smoke test
+- Docker Compose and rootless Podman examples
+- CI for formatting, vet, tests, Go builds, container build and authenticated smoke testing
 
-The MCC WebSocket bridge is based on the upstream WebSocket Bot protocol documented by MCCTeam. `WebSocketBot.cs` is an external MCC script and must be loaded in the MCC instance.
+`WebSocketBot.cs` is an external MCC script and must be loaded in the MCC instance.
 
 ## Architecture
 
 ```text
 Browser
    |
-   | HTTP/WebSocket
+   | authenticated HTTP/WebSocket
    v
 minecraft-console-client-web
    |
@@ -40,28 +40,30 @@ Minecraft Console Client + WebSocketBot.cs
 Minecraft Java server
 ```
 
-The MCC WebSocket endpoint should normally stay on a private container or host network. Only the web application should be exposed through your reverse proxy.
+Keep the MCC WebSocket endpoint on a private container or host network. Expose only the WebAdmin through your reverse proxy.
 
 ## MCC setup
 
-Configure and load the upstream `config/ChatBots/WebSocketBot.cs` script in MCC. The upstream script accepts a bind address, port and password and is loaded with MCC's `/script` command.
-
-Use a strong unique password. Pass the same password to this service as `MCC_WS_PASSWORD`.
+Configure and load upstream `config/ChatBots/WebSocketBot.cs` in MCC. Use a strong unique WebSocket password and pass the same value to this service as `MCC_WS_PASSWORD`.
 
 ## Run locally
 
 ```bash
 export MCC_WS_URL='ws://mcc:8043/'
-export MCC_WS_PASSWORD='replace-me'
+export MCC_WS_PASSWORD='replace-mcc-password'
+export MCC_WEB_PASSWORD='replace-webadmin-password'
 go run ./cmd/mcc-web
 ```
+
+The WebAdmin username defaults to `admin`. Override it with `MCC_WEB_USERNAME`.
 
 The UI listens on `http://127.0.0.1:8080` when using the Compose example, or `:8080` when running the binary directly.
 
 ## Docker Compose
 
 ```bash
-export MCC_WS_PASSWORD='replace-me'
+export MCC_WS_PASSWORD='replace-mcc-password'
+export MCC_WEB_PASSWORD='replace-webadmin-password'
 docker compose up --build -d
 ```
 
@@ -72,20 +74,28 @@ docker compose up --build -d
 | Variable | Default | Description |
 | --- | --- | --- |
 | `MCC_WEB_LISTEN` | `:8080` | HTTP listen address |
+| `MCC_WEB_USERNAME` | `admin` | WebAdmin login username |
+| `MCC_WEB_PASSWORD` | none | Required WebAdmin login password |
 | `MCC_WS_URL` | `ws://mcc:8043/` | MCC WebSocketBot endpoint |
 | `MCC_WS_PASSWORD` | none | Required WebSocketBot password |
 
-The password is never sent to the browser. The Go backend authenticates the upstream MCC WebSocket session before bridging traffic.
+The MCC password is never sent to the browser. The Go backend authenticates the upstream MCC WebSocket session before accepting browser commands.
+
+## WebAdmin authentication
+
+M0.6 adds native single-user authentication. Successful logins receive a cryptographically random, server-side session token in an `HttpOnly`, `SameSite=Strict` cookie. Sessions expire after 12 hours and are invalidated when the WebAdmin process restarts.
+
+`/api/status`, the WebAdmin UI and `/ws` require a valid session. `/api/healthz` remains intentionally public so Docker, Podman and orchestration health checks do not need application credentials.
+
+When HTTPS is terminated at a reverse proxy, forward `X-Forwarded-Proto: https` so the application marks the session cookie `Secure`. Use HTTPS whenever the WebAdmin is reachable beyond localhost or a trusted private network.
+
+M0.6 is single-user authentication, not RBAC. Multi-user roles can be added later if the WebAdmin grows into a broader control plane.
 
 ## Security model
 
-The current M0 UI has no end-user authentication of its own. Bind it to localhost or a trusted private network and put authentication at the reverse proxy until native auth lands in a later milestone.
+The application keeps MCC credentials server-side, checks browser WebSocket origins against the request host, uses authenticated server-side sessions, sets defensive browser headers and runs as UID/GID 1000 with Linux capabilities dropped in the supplied Compose example.
 
-The container runs as UID/GID 1000, drops Linux capabilities in the supplied Compose/Quadlet examples, and is designed to run without root privileges.
-
-## Planned milestones
-
-M1 will turn the raw event console into a real MCC WebAdmin: structured connection state, chat rendering, command responses, inventory/status views and safer reconnect handling. Later milestones can add multi-instance management, saved macros, native authentication/RBAC and richer MCC event views.
+Use strong, unrelated values for `MCC_WEB_PASSWORD` and `MCC_WS_PASSWORD`. Keep the MCC WebSocket service private even when WebAdmin authentication is enabled.
 
 ## Development
 
